@@ -5,7 +5,7 @@ TOKEN = os.environ["TELEGRAM_TOKEN"]
 CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
 headers = {
-    "User-Agent": "JobHunterBot/1.0 (contact: your_email@example.com)",
+    "User-Agent": "JobHunterBot/1.0 (contact: domnichev77@gmail.com)",
     "Accept": "application/json"
 }
 
