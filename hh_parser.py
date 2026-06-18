@@ -7,87 +7,133 @@ TOKEN = os.environ["TELEGRAM_TOKEN"]
 CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
 
-URL = "https://ust-kamenogorsk.hh.kz/search/vacancy?area=194"
+SEARCH_URL = "https://ust-kamenogorsk.hh.kz/search/vacancy?area=194"
 
 
-def get_vacancies():
-    response = requests.get(
-        URL,
-        headers={
-            "User-Agent": "Mozilla/5.0"
-        },
+HEADERS = {
+    "User-Agent": "Mozilla/5.0"
+}
+
+
+def get_vacancy_links():
+
+    html = requests.get(
+        SEARCH_URL,
+        headers=HEADERS,
         timeout=30
-    )
-
-    response.raise_for_status()
+    ).text
 
     soup = BeautifulSoup(
-        response.text,
+        html,
         "html.parser"
     )
 
-    vacancies = []
+    links = []
 
     for item in soup.select('a[data-qa="serp-item__title"]'):
-        title = item.get_text(
-            " ",
-            strip=True
-        )
 
         link = item.get("href")
 
-        if title and link:
-            vacancies.append(
-                {
-                    "title": title,
-                    "link": link
-                }
-            )
+        if link:
+            links.append(link.split("?")[0])
 
-    return vacancies
+    return list(dict.fromkeys(links))
 
 
-def remove_duplicates(vacancies):
-    result = []
-    seen = set()
+def parse_vacancy(url):
 
-    for vacancy in vacancies:
-        if vacancy["link"] not in seen:
-            seen.add(vacancy["link"])
-            result.append(vacancy)
+    html = requests.get(
+        url,
+        headers=HEADERS,
+        timeout=30
+    ).text
 
-    return result
+    soup = BeautifulSoup(
+        html,
+        "html.parser"
+    )
 
 
-def send_telegram(message):
+    title = soup.select_one(
+        '[data-qa="vacancy-title"]'
+    )
+
+    salary = soup.select_one(
+        '[data-qa="vacancy-salary"]'
+    )
+
+    company = soup.select_one(
+        '[data-qa="vacancy-company-name"]'
+    )
+
+    description = soup.select_one(
+        '[data-qa="vacancy-description"]'
+    )
+
+
+    return {
+
+        "title":
+            title.get_text(" ", strip=True)
+            if title else "Нет данных",
+
+        "salary":
+            salary.get_text(" ", strip=True)
+            if salary else "Доход не указан",
+
+        "company":
+            company.get_text(" ", strip=True)
+            if company else "Компания не указана",
+
+        "description":
+            description.get_text(" ", strip=True)[:700]
+            if description else "Описание отсутствует",
+
+        "url":
+            url
+    }
+
+
+
+def send_telegram(text):
+
     requests.post(
         f"https://api.telegram.org/bot{TOKEN}/sendMessage",
         data={
             "chat_id": CHAT_ID,
-            "text": message[:4000]
-        },
-        timeout=30
+            "text": text[:4000]
+        }
     )
+
 
 
 def main():
-    vacancies = get_vacancies()
 
-    vacancies = remove_duplicates(
-        vacancies
-    )
+    links = get_vacancy_links()
+
 
     message = (
-        f"Найдено вакансий: {len(vacancies)}\n\n"
+        f"Найдено вакансий: {len(links)}\n\n"
     )
 
-    for vacancy in vacancies[:10]:
+
+    for link in links[:5]:
+
+        vacancy = parse_vacancy(link)
+
+
         message += (
-            f"{vacancy['title']}\n"
-            f"{vacancy['link']}\n\n"
+            f"📌 {vacancy['title']}\n"
+            f"🏢 {vacancy['company']}\n"
+            f"💰 {vacancy['salary']}\n\n"
+            f"{vacancy['description']}\n\n"
+            f"🔗 {vacancy['url']}\n"
+            f"----------------\n\n"
         )
 
+
     send_telegram(message)
+
 
 
 if __name__ == "__main__":
