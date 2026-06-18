@@ -65,7 +65,6 @@ def parse(url):
         timeout=30
     ).text
 
-
     soup = BeautifulSoup(
         html,
         "html.parser"
@@ -76,28 +75,18 @@ def parse(url):
 
         item = soup.select_one(selector)
 
-        return clean(
-            item.get_text(" ", strip=True)
-        ) if item else ""
+        if item:
+            return clean(
+                item.get_text(" ", strip=True)
+            )
 
-
-    title = get(
-        '[data-qa="vacancy-title"]'
-    )
-
-    salary = get(
-        '[data-qa="vacancy-salary"]'
-    )
-
-    description = get(
-        '[data-qa="vacancy-description"]'
-    )
+        return ""
 
 
     return {
-        "title": title,
-        "salary": salary,
-        "description": description,
+        "title": get('[data-qa="vacancy-title"]'),
+        "salary": get('[data-qa="vacancy-salary"]'),
+        "description": get('[data-qa="vacancy-description"]'),
         "url": url
     }
 
@@ -105,42 +94,68 @@ def parse(url):
 
 def analyze(vacancy):
 
+    text = (
+        vacancy["description"]
+        .lower()
+    )
+
     score = 5
 
     plus = []
     minus = []
 
 
-    text = (
-        vacancy["description"]
-        .lower()
-    )
+    good_words = [
+        ("без опыта", "можно без опыта"),
+        ("обучение", "есть обучение"),
+        ("рассмотрим начинающих", "готовы рассмотреть новичков"),
+        ("студент", "подходит студентам")
+    ]
 
 
-    if "без опыта" in text:
-        score += 2
-        plus.append(
-            "можно без опыта"
-        )
+    bad_words = [
+        ("от 3 лет", "требуется опыт от 3 лет"),
+        ("обязателен опыт", "опыт обязателен"),
+        ("руководящ", "руководящий опыт")
+    ]
+
+
+    for word, reason in good_words:
+
+        if word in text:
+            score += 1
+            plus.append(reason)
+
+
+    for word, reason in bad_words:
+
+        if word in text:
+            score -= 1
+            minus.append(reason)
 
 
     if "200" in vacancy["salary"]:
         score += 1
+        plus.append("зарплата от 200 000 ₸")
+
+
+    if not plus:
         plus.append(
-            "зарплата от 200к"
+            "особых преимуществ не найдено"
         )
 
 
-    if "полный день" in text:
-        plus.append(
-            "полный день"
-        )
-
-
-    if "опыт" in text:
+    if not minus:
         minus.append(
-            "есть требование по опыту"
+            "критичных минусов не найдено"
         )
+
+
+    if score < 1:
+        score = 1
+
+    if score > 10:
+        score = 10
 
 
     return score, plus, minus
@@ -154,7 +169,8 @@ def send(text):
         data={
             "chat_id": CHAT_ID,
             "text": text
-        }
+        },
+        timeout=30
     )
 
 
@@ -168,33 +184,46 @@ def main():
 
         vacancy = parse(link)
 
-        score, plus, minus = analyze(vacancy)
+        score, plus, minus = analyze(
+            vacancy
+        )
 
 
-        short = vacancy["description"][:400]
+        description = vacancy["description"]
+
+
+        if len(description) > 400:
+            description = (
+                description[:400]
+                + "..."
+            )
 
 
         message = f"""
 📌 {vacancy['title']}
 
 
-💰 {vacancy['salary']}
+💰 Доход:
+{vacancy['salary']}
 
 
 ⭐ Оценка:
 {score}/10
 
 
-🟢 Плюсы:
-{chr(10).join("• "+x for x in plus) if plus else "• нет данных"}
+Почему:
+
+
+➕ Плюсы:
+{chr(10).join("• " + x for x in plus)}
 
 
 ⚠️ Обратить внимание:
-{chr(10).join("• "+x for x in minus) if minus else "• нет данных"}
+{chr(10).join("• " + x for x in minus)}
 
 
-📋 Коротко:
-{short}
+📝 Коротко:
+{description}
 
 
 🔗 Открыть:
