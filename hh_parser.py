@@ -2,49 +2,93 @@ import os
 import requests
 from bs4 import BeautifulSoup
 
+
 TOKEN = os.environ["TELEGRAM_TOKEN"]
 CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
-url = "https://ust-kamenogorsk.hh.kz/search/vacancy?area=194"
 
-response = requests.get(
-url,
-headers={"User-Agent": "Mozilla/5.0"},
-timeout=30
-)
+URL = "https://ust-kamenogorsk.hh.kz/search/vacancy?area=194"
 
-soup = BeautifulSoup(response.text, "html.parser")
 
-vacancies = []
+def get_vacancies():
+    response = requests.get(
+        URL,
+        headers={
+            "User-Agent": "Mozilla/5.0"
+        },
+        timeout=30
+    )
 
-for a in soup.select('a[data-qa="serp-item__title"]'):
-title = a.get_text(strip=True)
-link = a.get("href")
+    response.raise_for_status()
 
-```
-if title and link:
-    vacancies.append((title, link))
-```
+    soup = BeautifulSoup(
+        response.text,
+        "html.parser"
+    )
 
-# убираем дубли
+    vacancies = []
 
-seen = set()
-unique = []
+    for item in soup.select('a[data-qa="serp-item__title"]'):
+        title = item.get_text(
+            " ",
+            strip=True
+        )
 
-for title, link in vacancies:
-if link not in seen:
-seen.add(link)
-unique.append((title, link))
+        link = item.get("href")
 
-message = f"Найдено вакансий: {len(unique)}\n\n"
+        if title and link:
+            vacancies.append(
+                {
+                    "title": title,
+                    "link": link
+                }
+            )
 
-for title, link in unique[:10]:
-message += f"{title}\n{link}\n\n"
+    return vacancies
 
-requests.post(
-f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-data={
-"chat_id": CHAT_ID,
-"text": message[:4000]
-}
-)
+
+def remove_duplicates(vacancies):
+    result = []
+    seen = set()
+
+    for vacancy in vacancies:
+        if vacancy["link"] not in seen:
+            seen.add(vacancy["link"])
+            result.append(vacancy)
+
+    return result
+
+
+def send_telegram(message):
+    requests.post(
+        f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+        data={
+            "chat_id": CHAT_ID,
+            "text": message[:4000]
+        },
+        timeout=30
+    )
+
+
+def main():
+    vacancies = get_vacancies()
+
+    vacancies = remove_duplicates(
+        vacancies
+    )
+
+    message = (
+        f"Найдено вакансий: {len(vacancies)}\n\n"
+    )
+
+    for vacancy in vacancies[:10]:
+        message += (
+            f"{vacancy['title']}\n"
+            f"{vacancy['link']}\n\n"
+        )
+
+    send_telegram(message)
+
+
+if __name__ == "__main__":
+    main()
