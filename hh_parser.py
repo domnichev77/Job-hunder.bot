@@ -23,21 +23,37 @@ def get_vacancy_links():
         timeout=30
     ).text
 
-    soup = BeautifulSoup(
-        html,
-        "html.parser"
-    )
+    soup = BeautifulSoup(html, "html.parser")
 
     links = []
 
-    for item in soup.select('a[data-qa="serp-item__title"]'):
+    for item in soup.select(
+        'a[data-qa="serp-item__title"]'
+    ):
 
         link = item.get("href")
 
         if link:
-            links.append(link.split("?")[0])
+            links.append(
+                link.split("?")[0]
+            )
 
     return list(dict.fromkeys(links))
+
+
+
+def clean_text(text):
+
+    if not text:
+        return "Нет данных"
+
+    return (
+        text
+        .replace("\n\n\n", "\n")
+        .replace("  ", " ")
+        .strip()
+    )
+
 
 
 def parse_vacancy(url):
@@ -48,61 +64,55 @@ def parse_vacancy(url):
         timeout=30
     ).text
 
+
     soup = BeautifulSoup(
         html,
         "html.parser"
     )
 
 
-    title = soup.select_one(
-        '[data-qa="vacancy-title"]'
-    )
+    def get(selector):
 
-    salary = soup.select_one(
-        '[data-qa="vacancy-salary"]'
-    )
+        item = soup.select_one(selector)
 
-    company = soup.select_one(
-        '[data-qa="vacancy-company-name"]'
-    )
+        return clean_text(
+            item.get_text(" ", strip=True)
+        ) if item else "Не указано"
 
-    description = soup.select_one(
-        '[data-qa="vacancy-description"]'
-    )
 
 
     return {
 
-        "title":
-            title.get_text(" ", strip=True)
-            if title else "Нет данных",
+        "title": get(
+            '[data-qa="vacancy-title"]'
+        ),
 
-        "salary":
-            salary.get_text(" ", strip=True)
-            if salary else "Доход не указан",
+        "company": get(
+            '[data-qa="vacancy-company-name"]'
+        ),
 
-        "company":
-            company.get_text(" ", strip=True)
-            if company else "Компания не указана",
+        "salary": get(
+            '[data-qa="vacancy-salary"]'
+        ),
 
-        "description":
-            description.get_text(" ", strip=True)[:700]
-            if description else "Описание отсутствует",
+        "description": get(
+            '[data-qa="vacancy-description"]'
+        ),
 
-        "url":
-            url
+        "url": url
     }
 
 
 
-def send_telegram(text):
+def send(text):
 
     requests.post(
         f"https://api.telegram.org/bot{TOKEN}/sendMessage",
         data={
             "chat_id": CHAT_ID,
-            "text": text[:4000]
-        }
+            "text": text
+        },
+        timeout=30
     )
 
 
@@ -112,27 +122,34 @@ def main():
     links = get_vacancy_links()
 
 
-    message = (
-        f"Найдено вакансий: {len(links)}\n\n"
-    )
-
-
     for link in links[:5]:
+
 
         vacancy = parse_vacancy(link)
 
 
-        message += (
-            f"📌 {vacancy['title']}\n"
-            f"🏢 {vacancy['company']}\n"
-            f"💰 {vacancy['salary']}\n\n"
-            f"{vacancy['description']}\n\n"
-            f"🔗 {vacancy['url']}\n"
-            f"----------------\n\n"
-        )
+        message = f"""
+📌 {vacancy['title']}
 
 
-    send_telegram(message)
+🏢 Компания:
+{vacancy['company']}
+
+
+💰 Зарплата:
+{vacancy['salary']}
+
+
+📝 Описание:
+{vacancy['description']}
+
+
+🔗 Открыть вакансию:
+{vacancy['url']}
+"""
+
+
+        send(message[:4000])
 
 
 
