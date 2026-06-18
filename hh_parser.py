@@ -57,7 +57,7 @@ def get_links():
 
 
 
-def get_vacancy(url):
+def parse(url):
 
     html = requests.get(
         url,
@@ -72,38 +72,30 @@ def get_vacancy(url):
     )
 
 
-    def find(selector):
+    def get(selector):
 
         item = soup.select_one(selector)
 
-        if item:
-            return clean(
-                item.get_text(" ", strip=True)
-            )
-
-        return "Не указано"
+        return clean(
+            item.get_text(" ", strip=True)
+        ) if item else ""
 
 
-    title = find(
+    title = get(
         '[data-qa="vacancy-title"]'
     )
 
-    company = find(
-        '[data-qa="vacancy-company-name"]'
-    )
-
-    salary = find(
+    salary = get(
         '[data-qa="vacancy-salary"]'
     )
 
-    description = find(
+    description = get(
         '[data-qa="vacancy-description"]'
     )
 
 
     return {
         "title": title,
-        "company": company,
         "salary": salary,
         "description": description,
         "url": url
@@ -111,45 +103,58 @@ def get_vacancy(url):
 
 
 
-def format_description(text):
+def analyze(vacancy):
 
-    if text == "Не указано":
-        return text
+    score = 5
 
-
-    # режем слишком длинные описания
-    if len(text) > 900:
-        text = text[:900] + "..."
+    plus = []
+    minus = []
 
 
-    replacements = [
-        ("Обязанности:", "\n\n📋 Обязанности:\n"),
-        ("Требования:", "\n\n👤 Требования:\n"),
-        ("Мы предлагаем:", "\n\n🎁 Мы предлагаем:\n"),
-        ("Условия:", "\n\n🕒 Условия:\n")
-    ]
+    text = (
+        vacancy["description"]
+        .lower()
+    )
 
 
-    for old, new in replacements:
-        text = text.replace(
-            old,
-            new
+    if "без опыта" in text:
+        score += 2
+        plus.append(
+            "можно без опыта"
         )
 
 
-    return text
+    if "200" in vacancy["salary"]:
+        score += 1
+        plus.append(
+            "зарплата от 200к"
+        )
+
+
+    if "полный день" in text:
+        plus.append(
+            "полный день"
+        )
+
+
+    if "опыт" in text:
+        minus.append(
+            "есть требование по опыту"
+        )
+
+
+    return score, plus, minus
 
 
 
-def send(message):
+def send(text):
 
     requests.post(
         f"https://api.telegram.org/bot{TOKEN}/sendMessage",
         data={
             "chat_id": CHAT_ID,
-            "text": message[:4000]
-        },
-        timeout=30
+            "text": text
+        }
     )
 
 
@@ -159,34 +164,40 @@ def main():
     links = get_links()
 
 
-    # пока тестируем 3 вакансии
     for link in links[:3]:
 
-        vacancy = get_vacancy(link)
+        vacancy = parse(link)
+
+        score, plus, minus = analyze(vacancy)
 
 
-        description = format_description(
-            vacancy["description"]
-        )
+        short = vacancy["description"][:400]
 
 
         message = f"""
 📌 {vacancy['title']}
 
 
-🏢 Компания:
-{vacancy['company']}
+💰 {vacancy['salary']}
 
 
-💰 Зарплата:
-{vacancy['salary']}
+⭐ Оценка:
+{score}/10
 
 
-📝 Описание:
-{description}
+🟢 Плюсы:
+{chr(10).join("• "+x for x in plus) if plus else "• нет данных"}
 
 
-🔗 Открыть вакансию:
+⚠️ Обратить внимание:
+{chr(10).join("• "+x for x in minus) if minus else "• нет данных"}
+
+
+📋 Коротко:
+{short}
+
+
+🔗 Открыть:
 {vacancy['url']}
 """
 
