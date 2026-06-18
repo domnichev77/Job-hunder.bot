@@ -35,12 +35,15 @@ def get_links():
         timeout=30
     ).text
 
+
     soup = BeautifulSoup(
         html,
         "html.parser"
     )
 
+
     links = []
+
 
     for item in soup.select(
         'a[data-qa="serp-item__title"]'
@@ -48,10 +51,12 @@ def get_links():
 
         link = item.get("href")
 
+
         if link:
             links.append(
                 link.split("?")[0]
             )
+
 
     return list(dict.fromkeys(links))
 
@@ -65,6 +70,7 @@ def parse(url):
         timeout=30
     ).text
 
+
     soup = BeautifulSoup(
         html,
         "html.parser"
@@ -75,19 +81,33 @@ def parse(url):
 
         item = soup.select_one(selector)
 
+
         if item:
             return clean(
                 item.get_text(" ", strip=True)
             )
 
-        return ""
+
+        return "Не указано"
+
 
 
     return {
-        "title": get('[data-qa="vacancy-title"]'),
-        "salary": get('[data-qa="vacancy-salary"]'),
-        "description": get('[data-qa="vacancy-description"]'),
+
+        "title": get(
+            '[data-qa="vacancy-title"]'
+        ),
+
+        "salary": get(
+            '[data-qa="vacancy-salary"]'
+        ),
+
+        "description": get(
+            '[data-qa="vacancy-description"]'
+        ),
+
         "url": url
+
     }
 
 
@@ -99,78 +119,124 @@ def analyze(vacancy):
         .lower()
     )
 
+
     score = 5
 
-    plus = []
-    minus = []
+    reasons = []
 
 
-    good_words = [
-        ("без опыта", "можно без опыта"),
-        ("обучение", "есть обучение"),
-        ("рассмотрим начинающих", "готовы рассмотреть новичков"),
-        ("студент", "подходит студентам")
-    ]
+    if (
+        "без опыта" in text
+        or "обучение" in text
+        or "рассмотрим" in text
+    ):
+
+        score += 2
+
+        reasons.append(
+            "Есть признаки, что готовы рассматривать новичков"
+        )
+
+    else:
+
+        reasons.append(
+            "Нет явного указания на работу без опыта"
+        )
 
 
-    bad_words = [
-        ("от 3 лет", "требуется опыт от 3 лет"),
-        ("обязателен опыт", "опыт обязателен"),
-        ("руководящ", "руководящий опыт")
-    ]
+
+    if (
+        "1–3 года" in text
+        or "1-3 года" in text
+    ):
+
+        score += 1
+
+        reasons.append(
+            "Опыт 1–3 года подходит как начальный уровень"
+        )
 
 
-    for word, reason in good_words:
 
-        if word in text:
-            score += 1
-            plus.append(reason)
+    if "от 3 лет" in text:
 
+        score -= 2
 
-    for word, reason in bad_words:
+        reasons.append(
+            "Требуется опыт от 3 лет"
+        )
 
-        if word in text:
-            score -= 1
-            minus.append(reason)
 
 
     if "200" in vacancy["salary"]:
+
         score += 1
-        plus.append("зарплата от 200 000 ₸")
 
-
-    if not plus:
-        plus.append(
-            "особых преимуществ не найдено"
+        reasons.append(
+            "Доход начинается от 200 000 ₸"
         )
 
 
-    if not minus:
-        minus.append(
-            "критичных минусов не найдено"
+
+    if "150" in vacancy["salary"]:
+
+        reasons.append(
+            "Нижняя граница дохода ниже желаемого уровня"
         )
+
+
+
+    if score >= 8:
+
+        conclusion = (
+            "Сильное совпадение — стоит смотреть"
+        )
+
+    elif score >= 5:
+
+        conclusion = (
+            "Средний вариант — зависит от твоего опыта"
+        )
+
+    else:
+
+        conclusion = (
+            "Слабое совпадение"
+        )
+
 
 
     if score < 1:
         score = 1
 
+
     if score > 10:
         score = 10
 
 
-    return score, plus, minus
+
+    return score, reasons, conclusion
 
 
 
-def send(text):
+def send(message):
 
     requests.post(
+
         f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+
         data={
+
             "chat_id": CHAT_ID,
-            "text": text
+
+            "text": message,
+
+            "parse_mode": "HTML"
+
         },
+
         timeout=30
+
     )
 
 
@@ -180,11 +246,13 @@ def main():
     links = get_links()
 
 
+
     for link in links[:3]:
 
         vacancy = parse(link)
 
-        score, plus, minus = analyze(
+
+        score, reasons, conclusion = analyze(
             vacancy
         )
 
@@ -192,42 +260,42 @@ def main():
         description = vacancy["description"]
 
 
-        if len(description) > 400:
+        if len(description) > 450:
+
             description = (
-                description[:400]
+                description[:450]
                 + "..."
             )
 
 
+
         message = f"""
-📌 {vacancy['title']}
+
+<b>📌 {vacancy['title']}</b>
 
 
-💰 Доход:
+<b>💰 Доход</b>
 {vacancy['salary']}
 
 
-⭐ Оценка:
-{score}/10
+<b>🎯 Совпадение: {score}/10</b>
 
 
-Почему:
+<b>Почему такая оценка:</b>
+{chr(10).join("• " + x for x in reasons)}
 
 
-➕ Плюсы:
-{chr(10).join("• " + x for x in plus)}
+<b>💡 Вывод:</b>
+{conclusion}
 
 
-⚠️ Обратить внимание:
-{chr(10).join("• " + x for x in minus)}
-
-
-📝 Коротко:
+<b>📝 Коротко:</b>
 {description}
 
 
-🔗 Открыть:
+<b>🔗 Открыть вакансию:</b>
 {vacancy['url']}
+
 """
 
 
@@ -236,4 +304,5 @@ def main():
 
 
 if __name__ == "__main__":
+
     main()
