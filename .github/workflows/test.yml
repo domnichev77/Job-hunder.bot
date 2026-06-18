@@ -17,7 +17,7 @@ jobs:
         run: |
           pwd
           ls -la
-          python bot.py
+          python hh_parser.py
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
